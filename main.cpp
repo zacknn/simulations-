@@ -1,8 +1,10 @@
 #include <SFML/Graphics.hpp>
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/Window/WindowBase.hpp>
+#include <cstdlib>
+#include <iostream>
+#include <iterator>
 #include <optional>
-
 struct Vec2 {
   float x = 0, y = 0;
   Vec2 operator+(const Vec2 &other) const { return {x + other.x, y + other.y}; }
@@ -23,7 +25,7 @@ int main() {
   floor.setFillColor(sf::Color::Cyan);
   ball.setPosition({0.0f, 580.0f});
   Vec2 position{400, 100};
-  Vec2 velocity{100, 0};
+  Vec2 velocity{0, 0};
   Vec2 acceleration{0, 980.0f};
 
   sf::Clock clock;
@@ -41,9 +43,14 @@ int main() {
     position = position + (velocity * dt);
 
     // Ground
-    if (position.y > 580) {
+    if (position.y >= 580) {
       position.y = 580;
-      velocity.y *= -0.7f;
+      if (std::abs(velocity.y) > 30.0) {
+        velocity.y *= -0.7f;
+        std::cout << "Bounce ! velocity Y : " << velocity.y << std::endl;
+      } else {
+        velocity.y = 0;
+      }
     }
     // side walls
     if (position.x > 780) {
