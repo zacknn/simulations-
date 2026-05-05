@@ -2,163 +2,181 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <vector>
 
-const float GRAVITY = 980.0f;
-const float CURVE_CENTER = 400.0f;
-const float CURVE_BASE = 550.0f;
-const float CURVE_FACTOR = 0.003f;
+const float PI       = 3.14159265f;
+const float GRAVITY  = 500.0f;   // pixels/s² (tuned for screen scale)
+const float GROUND_Y = 580.0f;   // reference level for PE = 0
 
-struct PhysicsBall {
-    sf::CircleShape shape;
-    sf::Vector2f pos;
-    sf::Vector2f vel;
-    bool isAlive = false;
+// --- Terrain as a polyline ---
+std::vector<sf::Vector2f> TERRAIN = {
+    {0,   400},
+    {150, 400},   // flat start
+    {300, 480},   // slope down
+    {450, 560},   // valley bottom
+    {600, 460},   // slope up
+    {750, 340},   // top of hill  <-- high PE here
+    {800, 340}
+};
 
-    PhysicsBall() {
-        shape.setRadius(15.0f);
-        shape.setFillColor(sf::Color::Yellow);
-        shape.setOrigin({15.0f, 15.0f});
+float getTerrainY(float x) {
+    for (int i = 0; i < (int)TERRAIN.size() - 1; i++) {
+        float x0 = TERRAIN[i].x, x1 = TERRAIN[i+1].x;
+        if (x >= x0 && x <= x1) {
+            float t = (x - x0) / (x1 - x0);
+            return TERRAIN[i].y + t * (TERRAIN[i+1].y - TERRAIN[i].y);
+        }
     }
+    return TERRAIN.back().y;
+}
 
-    void launch(sf::Vector2f startPos, float speed) {
-        pos = startPos;
-        isAlive = true;
-        vel = {-speed, 0.0f};  // Move left
+float getSlopeAngle(float x) {
+    for (int i = 0; i < (int)TERRAIN.size() - 1; i++) {
+        float x0 = TERRAIN[i].x, x1 = TERRAIN[i+1].x;
+        if (x >= x0 && x <= x1) {
+            float dx = x1 - x0;
+            float dy = TERRAIN[i+1].y - TERRAIN[i].y;
+            return std::atan2(dy, dx);   // radians
+        }
+    }
+    return 0.f;
+}
+
+// ---------------------------------------------------------------
+struct Ball {
+    sf::CircleShape shape;
+    sf::Vector2f    pos;
+    float           speed;   // scalar speed along the slope
+
+    Ball() {
+        shape.setRadius(12.f);
+        shape.setFillColor(sf::Color::Yellow);
+        shape.setOrigin({12.f, 12.f});
+        pos   = {10.f, 0.f};
+        speed = 80.f;
     }
 
     void update(float dt) {
-        if (!isAlive)
-            return;
+        float angle = getSlopeAngle(pos.x);
 
-        // 1. Apply Gravity
-        vel.y += GRAVITY * dt;
+        // a = g * sin(θ)  –– positive when going downhill
+        float accel = GRAVITY * std::sin(angle);
+        speed += accel * dt;
+        if (speed < 10.f) speed = 10.f;   // keep rolling forward
 
-        // 2. Update Position
-        pos += vel * dt;
+        // move along slope direction
+        pos.x += speed * std::cos(angle) * dt;
+        pos.y  = getTerrainY(pos.x) - 12.f;  // sit on terrain
 
-        // 3. Collision with the Curve
-        float groundY = CURVE_BASE - std::powf(pos.x - CURVE_CENTER, 2) * CURVE_FACTOR;
-
-        if (pos.y > groundY) {
-            pos.y = groundY;
-
-            // Slope of the curve (derivative)
-            float slope = (pos.x - CURVE_CENTER) * -2.0f * CURVE_FACTOR;
-
-            // Project velocity onto the tangent (slide along curve)
-            float speed = std::sqrt(vel.x * vel.x + vel.y * vel.y);
-            float angle = std::atan(slope);
-
-            vel.x = speed * std::cos(angle);
-            vel.y = speed * std::sin(angle);
-
-            // Friction
-            vel *= 0.995f;
-        }
-
-        // Stop if very slow
-        float currentSpeed = std::sqrt(vel.x * vel.x + vel.y * vel.y);
-        if (currentSpeed < 10.0f && pos.y >= groundY - 5.0f) {
-            isAlive = false;
-        }
+        // loop back to start
+        if (pos.x >= TERRAIN.back().x - 5.f)
+            pos = {TERRAIN[0].x + 5.f, 0.f};
 
         shape.setPosition(pos);
     }
-
-    float getGroundY() {
-        return CURVE_BASE - std::powf(pos.x - CURVE_CENTER, 2) * CURVE_FACTOR;
-    }
 };
 
+// ---------------------------------------------------------------
 int main() {
-    sf::RenderWindow window(sf::VideoMode({800, 600}), "Energy Conservation",
+    sf::RenderWindow window(sf::VideoMode({800, 600}),
+                            "Potential & Kinetic Energy",
                             sf::Style::Titlebar | sf::Style::Close);
     window.setFramerateLimit(60);
 
-    PhysicsBall ball;
-
-    float launchSpeed = 300.0f;
-    const float MIN_SPEED = 100.0f;
-    const float MAX_SPEED = 800.0f;
-
-    // Start position (high on the right)
-    sf::Vector2f startPos = {700.0f, 50.0f};
-
-    // Font for UI
     sf::Font font;
     if (!font.openFromFile("/usr/share/fonts/TTF/DejaVuSans.ttf")) {
-        std::cerr << "Error: System font not found! UI will not render."
-                  << std::endl;
+        std::cerr << "Font not found!" << std::endl;
     }
 
     sf::Text uiText(font);
-    uiText.setCharacterSize(20);
+    uiText.setCharacterSize(16);
     uiText.setFillColor(sf::Color::White);
-    uiText.setPosition({10, 10});
+    uiText.setPosition({10.f, 10.f});
 
+    Ball ball;
     sf::Clock clock;
 
     while (window.isOpen()) {
-
+        // --- Events ---
         while (const std::optional event = window.pollEvent()) {
             if (event->is<sf::Event::Closed>())
                 window.close();
-
-            if (const auto *keyReleased = event->getIf<sf::Event::KeyReleased>()) {
-                if (keyReleased->code == sf::Keyboard::Key::Space) {
-                    ball.launch(startPos, launchSpeed);
-                }
-            }
         }
-
-        // Keyboard controls
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right))
-            launchSpeed += 10.0f;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left))
-            launchSpeed -= 10.0f;
-
-        // Clamp speed
-        if (launchSpeed < MIN_SPEED) launchSpeed = MIN_SPEED;
-        if (launchSpeed > MAX_SPEED) launchSpeed = MAX_SPEED;
 
         float dt = clock.restart().asSeconds();
         ball.update(dt);
 
-        // Calculate energy
-        float height = 600.0f - ball.pos.y;
-        float PE = 0.5f * height;  // mass = 1, gravity = 980
-        float speed = std::sqrt(ball.vel.x * ball.vel.x + ball.vel.y * ball.vel.y);
-        float KE = 0.5f * speed * speed;
+        // --- Energy calculations ---
+        float h  = GROUND_Y - (ball.pos.y + 12.f);   // height above ground
+        float ke = 0.5f * ball.speed * ball.speed;    // ½mv² (mass=1)
+        float pe = GRAVITY * h;                        // mgh  (mass=1)
+        float total = ke + pe;
 
-        // UI Text
-        std::string info = "Speed: " + std::to_string((int)launchSpeed) +
-                          " | PE: " + std::to_string((int)PE) +
-                          " | KE: " + std::to_string((int)KE) +
-                          "\n[Space to Launch] [Left/Right to Adjust Speed]";
+        // --- Build terrain drawable ---
+        // Fill below the terrain
+        sf::VertexArray fill(sf::PrimitiveType::TriangleStrip);
+        for (auto& p : TERRAIN) {
+            fill.append({p,               sf::Color(40, 80, 130, 200)});
+            fill.append({{p.x, 600.f},    sf::Color(20, 40,  80, 200)});
+        }
+
+        // Terrain outline
+        sf::VertexArray outline(sf::PrimitiveType::LineStrip, TERRAIN.size());
+        for (int i = 0; i < (int)TERRAIN.size(); i++)
+            outline[i] = {TERRAIN[i], sf::Color::White};
+
+        // --- Energy bars (bottom-left) ---
+        float maxE   = 80000.f;
+        float barW   = 28.f;
+        float barBaseY = 595.f;
+        float maxBarH  = 140.f;
+
+        auto makeBar = [&](float value, float bx, sf::Color col)
+            -> sf::RectangleShape
+        {
+            float bh = std::min(value / maxE * maxBarH, maxBarH);
+            sf::RectangleShape bar({barW, bh});
+            bar.setFillColor(col);
+            bar.setPosition({bx, barBaseY - bh});
+            return bar;
+        };
+
+        sf::RectangleShape keBar  = makeBar(ke,    20.f,  sf::Color(80, 160, 255));
+        sf::RectangleShape peBar  = makeBar(pe,    60.f,  sf::Color(255, 90,  70));
+        sf::RectangleShape totBar = makeBar(total, 100.f, sf::Color(80, 220, 120));
+
+        // Bar labels
+        sf::Text keLabel(font),  peLabel(font), totLabel(font);
+        keLabel .setCharacterSize(13); keLabel .setFillColor(sf::Color::White);
+        peLabel .setCharacterSize(13); peLabel .setFillColor(sf::Color::White);
+        totLabel.setCharacterSize(13); totLabel.setFillColor(sf::Color::White);
+        keLabel .setString("KE");  keLabel .setPosition({20.f,  barBaseY + 2});
+        peLabel .setString("PE");  peLabel .setPosition({60.f,  barBaseY + 2});
+        totLabel.setString("TOT"); totLabel.setPosition({98.f,  barBaseY + 2});
+
+        // --- HUD text ---
+        std::string info =
+            "KE = 1/2 * v^2 = " + std::to_string((int)ke)   + "\n"
+            "PE = g * h     = " + std::to_string((int)pe)   + "\n"
+            "Total Energy   = " + std::to_string((int)total) + "\n"
+            "Height (h)     = " + std::to_string((int)h)     + " px";
         uiText.setString(info);
 
-        window.clear(sf::Color(30, 30, 30));
-
-        // Draw the Curve
-        for (int x = 0; x < 800; x += 5) {
-            sf::CircleShape dot(3);
-            dot.setFillColor(sf::Color(100, 200, 100));
-            dot.setOrigin({1.5f, 1.5f});
-            float y = CURVE_BASE - std::powf(x - CURVE_CENTER, 2) * CURVE_FACTOR;
-            dot.setPosition({(float)x, y});
-            window.draw(dot);
-        }
-
-        // Draw Ball
-        if (ball.isAlive)
-            window.draw(ball.shape);
-
-        // Draw UI
-        if (font.getLineSpacing(20) != 0) {
+        // --- Render ---
+        window.clear(sf::Color(15, 15, 25));
+        window.draw(fill);
+        window.draw(outline);
+        window.draw(ball.shape);
+        window.draw(keBar);
+        window.draw(peBar);
+        window.draw(totBar);
+        window.draw(keLabel);
+        window.draw(peLabel);
+        window.draw(totLabel);
+        if (font.getLineSpacing(16) != 0)
             window.draw(uiText);
-        }
-
         window.display();
     }
+
     return 0;
 }
