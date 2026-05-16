@@ -2,30 +2,18 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall
 LIBS = -lsfml-graphics -lsfml-window -lsfml-system
-TARGET = physics_sim
 
 # Get all .cpp files in the directory
 SRCS = $(wildcard *.cpp)
-OBJS = $(SRCS:.cpp=.o)
+BINARIES = $(SRCS:.cpp=)
 
-# Default rule
-all: $(TARGET)
+# Default rule: build all executables with the same basename as each .cpp file
+all: $(BINARIES)
 
-$(TARGET): $(OBJS)
-	$(CXX) $(OBJS) -o $(TARGET) $(LIBS)
+# Build an executable from a single source file
+%: %.cpp
+	$(CXX) $(CXXFLAGS) $< -o $@ $(LIBS)
 
-# Compile a single .cpp file
-%.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-# Rule to compile a specific file by name
-file:
-	$(CXX) $(CXXFLAGS) -c $(file).cpp -o $(file).o
-
-# Clean rule to remove compiled files
+# Clean rule to remove generated executables
 clean:
-	rm -f $(TARGET) $(OBJS)
-
-# Rule to run the program
-run: all
-	./$(TARGET)
+	rm -f $(BINARIES)
