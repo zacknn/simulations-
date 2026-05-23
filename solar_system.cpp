@@ -4,9 +4,9 @@
 #include <SFML/System/Vector2.hpp>
 #include <cstddef>
 #include <deque>
+#include <iostream>
 #include <string>
 #include <vector>
-
 struct Planet {
   std::string name;
   float mass;
@@ -47,6 +47,20 @@ int main() {
                           sf::Style::Titlebar | sf::Style::Close);
   sf::Vector2f center = sf::Vector2f(window.getSize()) / 2.f;
   window.setFramerateLimit(60);
+  sf::View camera = window.getDefaultView();
+
+  bool panning = false;
+  sf::Vector2i lastMousePos;
+
+  sf::Font font;
+  if (!font.openFromFile("/usr/share/fonts/TTF/DejaVuSans.ttf")) {
+    std::cerr << "Font not found!" << std::endl;
+  }
+
+  sf::Text uiText(font);
+  uiText.setCharacterSize(20);
+  uiText.setFillColor(sf::Color::White);
+  uiText.setPosition({10, 10});
 
   Planet sun("Sun", 1.0e6f, 40.0f, center, sf::Vector2f(0, 0),
              sf::Color::Yellow);
@@ -93,6 +107,31 @@ int main() {
     while (const std::optional event = window.pollEvent()) {
       if (event->is<sf::Event::Closed>())
         window.close();
+      if (const auto *scroll = event->getIf<sf::Event::MouseWheelScrolled>()) {
+        if (scroll->delta > 0)
+          camera.zoom(0.9f); // scroll up = zoom in
+        else
+          camera.zoom(1.1f); // scroll down = zoom out
+      }
+      if (const auto *mb = event->getIf<sf::Event::MouseButtonPressed>()) {
+        if (mb->button == sf::Mouse::Button::Middle) {
+          panning = true;
+          lastMousePos = mb->position;
+        }
+      }
+
+      if (const auto *mb = event->getIf<sf::Event::MouseButtonReleased>()) {
+        if (mb->button == sf::Mouse::Button::Middle)
+          panning = false;
+      }
+
+      if (const auto *mm = event->getIf<sf::Event::MouseMoved>()) {
+        if (panning) {
+          sf::Vector2i delta = lastMousePos - mm->position;
+          camera.move(sf::Vector2f(delta));
+          lastMousePos = mm->position;
+        }
+      }
     }
 
     float dt = clock.restart().asSeconds();
@@ -104,6 +143,7 @@ int main() {
     // moon orbits earth, not the sun
     // moon.update(dt, earth);
     // moon.update(dt, sun);
+    window.setView(camera);
     window.clear();
     for (auto *p : planets) {
       for (size_t i = 0; i < p->trail.size(); i++) {
@@ -119,6 +159,16 @@ int main() {
     for (auto *p : planets)
       window.draw(p->circle);
     // window.draw(moon.circle);
+    float yOffset = 10.f;
+    for (auto *p : planets) {
+      float speed = std::sqrt(p->velocity.x * p->velocity.x +
+                              p->velocity.y * p->velocity.y);
+      std::string info = p->name + ": " + std::to_string(speed);
+      uiText.setString(info);
+      uiText.setPosition({10.f, yOffset});
+      window.draw(uiText);
+      yOffset += 25.f; // move down for next line
+    }
     window.display();
   }
 
