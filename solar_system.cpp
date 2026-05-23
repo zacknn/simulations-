@@ -1,5 +1,9 @@
 #include <SFML/Graphics.hpp>
+#include <SFML/Graphics/View.hpp>
 #include <SFML/System/Clock.hpp>
+#include <SFML/System/Vector2.hpp>
+#include <cstddef>
+#include <deque>
 #include <string>
 #include <vector>
 
@@ -9,6 +13,8 @@ struct Planet {
   sf::Vector2f position;
   sf::Vector2f velocity;
   sf::CircleShape circle;
+  std::deque<sf::Vector2f> trail;
+  size_t maxtail = 300;
 
   Planet(std::string n, float m, float radius, sf::Vector2f pos,
          sf::Vector2f vel, sf::Color color)
@@ -30,6 +36,9 @@ struct Planet {
     velocity += dirNorm * accel * dt;
     position += velocity * dt;
     circle.setPosition(position);
+    trail.push_back(position);
+    if (trail.size() > maxtail)
+      trail.pop_front();
   }
 };
 
@@ -93,14 +102,23 @@ int main() {
       p->update(dt, sun);
 
     // moon orbits earth, not the sun
-    moon.update(dt, earth);
-    moon.update(dt, sun);
-
+    // moon.update(dt, earth);
+    // moon.update(dt, sun);
     window.clear();
+    for (auto *p : planets) {
+      for (size_t i = 0; i < p->trail.size(); i++) {
+        sf::CircleShape dot(1.f);
+        dot.setPosition(p->trail[i]);
+        dot.setOrigin({1.f, 1.f});
+        int alpha = (int)(255.f * i / p->trail.size());
+        dot.setFillColor(sf::Color(255, 255, 255, alpha));
+        window.draw(dot);
+      }
+    }
     window.draw(sun.circle);
     for (auto *p : planets)
       window.draw(p->circle);
-    window.draw(moon.circle);
+    // window.draw(moon.circle);
     window.display();
   }
 
