@@ -92,14 +92,24 @@ int main() {
                  sf::Vector2f(center.x + 580.f, center.y),
                  sf::Vector2f(0.f, 13.1f), sf::Color(63, 84, 186));
 
-  // moon orbiting earth
-  Planet moon("Moon", 0.012f, 3.f,
-              sf::Vector2f(center.x + 180.f + 25.f, center.y),
-              sf::Vector2f(0.f, 23.6f + 5.f), sf::Color(200, 200, 200));
+  float moonOrbitRadius = 25.0f;
+  float earthOrbitRadius = 180.0f;
+  float earthOrbitSpeed = 23.6f;
+  float moonOrbitSpeed = std::sqrt(0.1f * 1.0f / moonOrbitRadius); // G * M_earth / r
+  
+  // Earth is at (center.x + earthOrbitRadius, center.y) moving UP
+  // Moon starts to the RIGHT of Earth, so its relative velocity should be UP
+  sf::Vector2f moonInitialPos(center.x + earthOrbitRadius + moonOrbitRadius, center.y);
+  sf::Vector2f moonInitialVel(0.f, earthOrbitSpeed + moonOrbitSpeed);
 
+  // moon orbiting earth
+  Planet moon("Moon", 0.012f, 3.f, moonInitialPos, moonInitialVel, sf::Color(200, 200, 200));
+
+  
   // put all planets in a vector so we can loop over them
   std::vector<Planet *> planets = {&mercury, &venus,  &earth,  &mars,
                                    &jupiter, &saturn, &uranus, &neptune};
+  std::vector<Planet*> moons = { &moon };
 
   sf::Clock clock;
 
@@ -139,10 +149,12 @@ int main() {
     // update all planets against the sun
     for (auto *p : planets)
       p->update(dt, sun);
+    
+    for (auto* m : moons) {
+      m->update(dt, earth);
+      m->update(dt, sun);
+    }
 
-    // moon orbits earth, not the sun
-    // moon.update(dt, earth);
-    // moon.update(dt, sun);
     window.setView(camera);
     window.clear();
     for (auto *p : planets) {
@@ -155,10 +167,22 @@ int main() {
         window.draw(dot);
       }
     }
+    for (auto* m : moons) {
+    for (size_t i = 0; i < m->trail.size(); i++) {
+        sf::CircleShape dot(1.f);
+        dot.setPosition(m->trail[i]);
+        dot.setOrigin({1.f, 1.f});
+        int alpha = (int)(255.f * i / m->trail.size());
+        dot.setFillColor(sf::Color(255, 255, 255, alpha));
+        window.draw(dot);
+    }
+    window.draw(m->circle);
+}
     window.draw(sun.circle);
     for (auto *p : planets)
       window.draw(p->circle);
-    // window.draw(moon.circle);
+    window.draw(moon.circle);
+    window.setView(window.getDefaultView());
     float yOffset = 10.f;
     for (auto *p : planets) {
       float speed = std::sqrt(p->velocity.x * p->velocity.x +

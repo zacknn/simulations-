@@ -1,5 +1,6 @@
 # Ignore everything
 *
 
-# Except C++ source files
+# Except C++ source files and md file
 !*.cpp
+!*.md
